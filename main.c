@@ -28,7 +28,7 @@
 
 #include <stdio.h>
 
-#include "sri.h" //StatLib has to be added to the Path
+#include <sri.h> //In Eclipse: Use Build->Setting->GCC C++Compiler->Includes and the link the project folder of SRI
 
 
 static void echo(int);
