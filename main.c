@@ -158,7 +158,6 @@ void* server_x(void *param) {
 		pthread_mutex_lock(&(p_secondary_cond->mutx));
 		p_secondary_cond->target_phase = target_phase;
 		p_secondary_cond->threshold = threshold;
-		usleep(1000000);
 		pthread_mutex_unlock(&(p_secondary_cond->mutx));
 		//pointer_to_condition->target_phase = number_from_sock(fd);
 
