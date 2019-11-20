@@ -28,7 +28,13 @@
 
 #include <stdio.h>
 
-#include <sri.h> //In Eclipse: Use Build->Setting->GCC C++Compiler->Includes and the link the project folder of SRI
+// Inter process communication/Shared memory
+#include <sys/ipc.h>
+#include <sys/shm.h>
+
+#include <sri.h>
+
+
 
 
 static void echo(int);
@@ -86,16 +92,23 @@ int* conditions_from_sock(int client_socket)
 	conditions[0] = atoi(ptr);
 	ptr = strtok(NULL, delim); //changing pointer position to next delimiter
 	conditions[1] = atoi(ptr);
-	printf("Message : %s\n", echo_buffer);
 	return conditions;
 }
 
 
 void* server_x(void *param) {
+	// ftok to generate unique key
+	key_t key = ftok("shmfile2",65);
 
-	cond_pair *pointer_to_conditions = (cond_pair*) param;
-	condition *p_primary_cond = (condition*) &pointer_to_conditions->primary;
-	condition *p_secondary_cond = (condition*) &pointer_to_conditions->secondary;
+	// shmget returns an identifier in shmid
+	int shmid = shmget(key,shm_size,0666|IPC_CREAT);
+
+	// shmat to attach to shared memory
+	cond_pair *conds = (cond_pair*) shmat(shmid,(void*)0,0);
+
+	conds = (cond_pair*) param;
+	condition *p_primary_cond = (condition*) &conds->primary;
+	condition *p_secondary_cond = (condition*) &conds->secondary;
 
 	struct sockaddr_in server, client;
 
@@ -148,17 +161,14 @@ void* server_x(void *param) {
 		int target_phase = recieved_conds[0];
 		int threshold = recieved_conds[1];
 		//Writes data to the primary condition
-		pthread_mutex_lock(&(p_primary_cond->mutx));
+		printf("[Server] New target phase: %d \n", target_phase);
 		p_primary_cond->target_phase = target_phase;
 		p_primary_cond->threshold = threshold;
-		usleep(5000000);
-		pthread_mutex_unlock(&(p_primary_cond->mutx));
-
+		printf("[Server] Primary condition: %s \n", condition_to_string(*p_primary_cond));
+		printf("[Server] Variable p_primary_cond is at address: %p\n", (void*)&p_primary_cond);
 		//Writes data to the secondary condition
-		pthread_mutex_lock(&(p_secondary_cond->mutx));
 		p_secondary_cond->target_phase = target_phase;
 		p_secondary_cond->threshold = threshold;
-		pthread_mutex_unlock(&(p_secondary_cond->mutx));
 		//pointer_to_condition->target_phase = number_from_sock(fd);
 
 		/* Close connection. */
@@ -169,21 +179,8 @@ void* server_x(void *param) {
 }
 
 int main(){
-	condition primary_cond = { 0, 0 };
-	condition secondary_cond = { 0, 0 };
-	cond_pair cond_shared = { primary_cond, secondary_cond };
-	pthread_mutex_init(&cond_shared.primary.mutx, NULL);
-	pthread_mutex_init(&cond_shared.secondary.mutx, NULL);
-	server_x(&cond_shared);
 
-
-
-	int same = compare_conditions(standard, standard);
-	if (same)
-		printf("It is the same Condition: \n");
-	else{
-		printf("It isn't the same Condition: \n");
-	}
+	server_x(&standard_cond_pair);
 
 	return 0;
 }
