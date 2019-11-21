@@ -1,5 +1,3 @@
-
-
 #include <pthread.h>
 
 /* server.c */
@@ -64,23 +62,39 @@ static void echo(int client_socket)
 	printf("Message from Client : %s \t%s", echo_buffer, ctime(&zeit));
 }
 
-int* conditions_from_sock(int client_socket)
+int condition_from_sock(int client_socket, condition *receive_cond)
+/* This function reads the socket and converts the input into a condition.
+ * This condition will be written in the given condition.
+ *
+ * it will only work while only full condition parameters are send to the socket
+ *
+ *  Params:
+ *  	int client_socket:
+ *  		The socket where that data will be received from. This is the return type of accept()
+ *  	condition *receive_cond:
+ *  		In this pointer to a condition in that the new condition will be written in
+ *  return:
+ *  	int:
+ *  		EXIT_SUCCESS or error code
+ *
+ *
+ */
 
 {
 	char echo_buffer[RCVBUFSIZE];
 	int recv_size;
-	static int conditions[2];
 
 	if ((recv_size = recv(client_socket, echo_buffer, RCVBUFSIZE, 0)) < 0)
 		error_exit("Fehler bei recv()");
-
 	//Check if message complete(check for Brackets)
 	int len_message = strlen(echo_buffer);
 	if (echo_buffer[0] != '[' || echo_buffer[len_message - 1] != ']') {
-		printf("Message not in right format: %s\n", echo_buffer);
-		return -1;
+		printf("Message not in right format! Message:'%s'\n", echo_buffer);
+		error_exit("Message not in right format");
 	}
-
+	else{
+		printf("Message; '%s'\n", echo_buffer);
+	}
 	char *substr = malloc(len_message - 1);
 	strncpy(substr, echo_buffer + 1, len_message - 2);
 	substr[len_message - 2] = '\0';
@@ -88,11 +102,12 @@ int* conditions_from_sock(int client_socket)
 	char delim[] = ",";
 
 	char *ptr = strtok(substr, delim);
-
-	conditions[0] = atoi(ptr);
+	int threshold = atoi(ptr);
 	ptr = strtok(NULL, delim); //changing pointer position to next delimiter
-	conditions[1] = atoi(ptr);
-	return conditions;
+	int target_phase = atoi(ptr);
+	receive_cond->threshold = threshold;
+	receive_cond->target_phase = target_phase;
+	return EXIT_SUCCESS;
 }
 
 
@@ -102,10 +117,9 @@ void* server_x(void *param) {
 
 	// shmget returns an identifier in shmid
 	int shmid = shmget(key,shm_size,0666|IPC_CREAT);
-	printf("[Server] shmid %d", shmid);
 
 	cond_pair *conds = (cond_pair*) shmat(shmid,(void*)0,0);
-	*conds = (cond_pair*) param;
+	*conds = *(cond_pair*)param;
 	condition *primary_cond = (condition*) &conds->primary;
 	condition *secondary_cond = (condition*) &conds->secondary;
 	printf("[Loop] Start prim cond: "); print_condition(*primary_cond);
@@ -118,7 +132,7 @@ void* server_x(void *param) {
 	/* Create the Socket. */
 	sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (sock < 0)
-		error_exit("Fehler beim Anlegen eines Sockets");
+		error_exit("Error during creation of a socket");
 
 	/* Erzeuge die Socketadresse des Servers. */
 	memset(&server, 0, sizeof(server));
@@ -140,10 +154,10 @@ void* server_x(void *param) {
 		error_exit("Fehler bei listen");
 
 	printf("Server ready - waiting for messages ...\n");
-	/* Bearbeite die Verbindungswünsche von Clients
-	 * in einer Endlosschleife.
-	 * Der Aufruf von accept() blockiert so lange,
-	 * bis ein Client Verbindung aufnimmt. */
+	/* Here we work of connections from clients in an endless loop.
+	 * TODO: Shutdown command by the client
+	 * The call of accept() blocks the program until a client connects
+	 * */
 	while (1) {
 		len = sizeof(client);
 		fd = accept(sock, (struct sockaddr*) &client, &len);
@@ -152,23 +166,15 @@ void* server_x(void *param) {
 		//printf("Client with Adress: %s\n", inet_ntoa(client.sin_addr));
 		/* Daten vom Client auf dem Bildschirm ausgeben */
 
-		echo(fd);
-
-		int *recieved_conds;
-		recieved_conds = conditions_from_sock(fd);
-		int target_phase = recieved_conds[0];
-		int threshold = recieved_conds[1];
+		//echo(fd);
+		static condition receive_cond;
+		condition_from_sock(fd, &receive_cond);
 		//Writes data to the primary condition
-		printf("[Server] New target phase: %d \n", target_phase);
-		primary_cond->target_phase = target_phase;
-		primary_cond->threshold = threshold;
-
+		*primary_cond = receive_cond;
 		printf("[Server] Primary condition: "); print_condition(*primary_cond);
-		printf("[Server] Variable primary_cond is at address: %p\n", (void*)&primary_cond);
+
 		//Writes data to the secondary condition
-		secondary_cond->target_phase = target_phase;
-		secondary_cond->threshold = threshold;
-		//pointer_to_condition->target_phase = number_from_sock(fd);
+		*secondary_cond = receive_cond;
 
 		/* Close connection. */
 		close(fd);
