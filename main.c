@@ -98,20 +98,19 @@ int* conditions_from_sock(int client_socket)
 
 void* server_x(void *param) {
 	// ftok to generate unique key
-	key_t key = ftok("shmfile2",65);
+	key_t key = ftok("shmfile",65);
 
 	// shmget returns an identifier in shmid
 	int shmid = shmget(key,shm_size,0666|IPC_CREAT);
+	printf("[Server] shmid %d", shmid);
 
-	// shmat to attach to shared memory
 	cond_pair *conds = (cond_pair*) shmat(shmid,(void*)0,0);
-
-	conds = (cond_pair*) param;
-	condition *p_primary_cond = (condition*) &conds->primary;
-	condition *p_secondary_cond = (condition*) &conds->secondary;
+	*conds = (cond_pair*) param;
+	condition *primary_cond = (condition*) &conds->primary;
+	condition *secondary_cond = (condition*) &conds->secondary;
+	printf("[Loop] Start prim cond: "); print_condition(*primary_cond);
 
 	struct sockaddr_in server, client;
-
 	int sock, fd;
 
 	int len;
@@ -146,7 +145,6 @@ void* server_x(void *param) {
 	 * Der Aufruf von accept() blockiert so lange,
 	 * bis ein Client Verbindung aufnimmt. */
 	while (1) {
-		//printf("Server:\n");
 		len = sizeof(client);
 		fd = accept(sock, (struct sockaddr*) &client, &len);
 		if (fd < 0)
@@ -162,13 +160,14 @@ void* server_x(void *param) {
 		int threshold = recieved_conds[1];
 		//Writes data to the primary condition
 		printf("[Server] New target phase: %d \n", target_phase);
-		p_primary_cond->target_phase = target_phase;
-		p_primary_cond->threshold = threshold;
-		printf("[Server] Primary condition: %s \n", condition_to_string(*p_primary_cond));
-		printf("[Server] Variable p_primary_cond is at address: %p\n", (void*)&p_primary_cond);
+		primary_cond->target_phase = target_phase;
+		primary_cond->threshold = threshold;
+
+		printf("[Server] Primary condition: "); print_condition(*primary_cond);
+		printf("[Server] Variable primary_cond is at address: %p\n", (void*)&primary_cond);
 		//Writes data to the secondary condition
-		p_secondary_cond->target_phase = target_phase;
-		p_secondary_cond->threshold = threshold;
+		secondary_cond->target_phase = target_phase;
+		secondary_cond->threshold = threshold;
 		//pointer_to_condition->target_phase = number_from_sock(fd);
 
 		/* Close connection. */
