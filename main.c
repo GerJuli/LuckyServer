@@ -134,11 +134,11 @@ void* server_x(void *param) {
 	if (sock < 0)
 		error_exit("Error during creation of a socket");
 
-	/* Erzeuge die Socketadresse des Servers. */
+	/* Create socket address of server */
 	memset(&server, 0, sizeof(server));
-	/* IPv4-Verbindung */
+	/* IPv4-Connection */
 	server.sin_family = AF_INET;
-	/* INADDR_ANY: jede IP-Adresse annehmen */
+	/* INADDR_ANY: accept any IP-address */
 	server.sin_addr.s_addr = htonl(INADDR_ANY);
 	/* Portnummer */
 	server.sin_port = htons(PORT);
